@@ -1,0 +1,367 @@
+#!/bin/bash
+
+# Copyright (c) 2018, Kungliga Tekniska Högskolan
+# (Royal Institute of Technology, Stockholm Sweden)
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions
+# are met:
+#
+# 1. Redistributions of source code must retain the above copyright
+#    notice, this list of conditions and the following disclaimer.
+#
+# 2. Redistributions in binary form must reproduce the above copyright
+#    notice, this list of conditions and the following disclaimer in the
+#    documentation and/or other materials provided with the distribution.
+#
+# 3. Neither the name of the university nor the names of its contributors
+#    may be used to endorse or promote products derived from this software
+#    without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+
+set -e; set -o pipefail
+
+thisscript=$(readlink -f "$0")
+scriptdir=$(dirname "$thisscript")
+scriptname=$(basename "$thisscript")
+
+## Manage script runtime, error handling and temporary files.
+
+declare -a TMPFILES
+
+mktmp() {
+    local tmpvar="$1"; shift
+    local lctmpvar=$(tr '[[:upper:]]' '[[:lower:]]' <<<"$tmpvar")
+    local newtmpfile=$(mktemp "$@" "tmp.$scriptname.$lctmpvar.XXXXXX")
+    if [[ -z "$newtmpfile" ]]; then errx "Could not create temporary file."; fi
+    TMPFILES+=("$newtmpfile")
+    eval "$tmpvar='$newtmpfile'"
+}
+
+mktmp_large() {
+    mktmp "$@" --tmpdir=/var/tmp
+}
+
+cleanup() {
+    rm -rf "${TMPFILES[@]}"; TMPFILES=()
+}
+
+errx() {
+    local -i l="${BASH_LINENO}"
+    trap - EXIT
+    cleanup
+    if (( l == 1 )); then
+	echo >&2 "Error:" "$@"
+    else
+	echo >&2 "Error (line $l):" "$@"
+    fi
+    exit 2
+}
+
+declare -a ERRS
+onexit() {
+    local ec="$?" l="${BASH_LINENO}"
+    trap - EXIT
+    cleanup
+    local -i exitcode=$ec lineno=$l
+
+    if (( exitcode != 0 )); then
+	if (( lineno > 1 )); then
+	    echo >&2 "ERROR: $0: Command at line $l failed with code $exitcode"
+	else
+	    echo >&2 "ERROR: $0: Failed with code $exitcode"
+	fi
+    fi
+
+    for s in "${ERRS[@]}"; do
+	echo >&2 "Error:" "$s"
+	if (( exitcode < 2 )); then exitcode=2; fi
+    done
+
+    exit $exitcode
+}
+trap onexit EXIT
+
+## Parse the command line.
+
+usage() {
+    cat <<EOF
+Usage:
+
+  $0 backup azure all
+	Backup all services on Azure.
+
+  $0 backup azure postgres
+	Backup all PostgreSQL databases on Azure.
+
+  $0 backup postgres host <conn>
+	Backup all PostgreSQL databases on host <conn>.
+	<conn> must not contain dbname.
+
+  $0 backup postgres db <conn>
+	Backup specific PostgreSQL database <conn>.
+
+  $0 --help
+	Show help.
+
+<conn> is a libpq connection string, typically:
+
+ host=myappdb.postgres.database.azure.com user=backupuser@myappdb sslmode=require
+ host=myappdb.postgres.database.azure.com user=backupuser@myappdb sslmode=require dbname=myappdb
+
+It should not contain a password, use ~/.pgpass instead. See:
+https://www.postgresql.org/docs/10/static/libpq-connect.html#LIBPQ-CONNSTRING
+
+BORG_REPO must point to an existing borg repository. To initialize borg, run
+
+  borg init -e none /some/permanent/location/backups
+
+then run
+
+  env BORG_REPO=/some/permanent/location/backups $0
+
+EOF
+    exit 0
+}
+
+parseopt() {
+    local key="$1"; shift
+    local value="$1"; shift
+
+    case "$key" in
+	help)
+	    usage; exit 0
+	    ;;
+    esac
+}
+
+main() {
+    local -a commands
+
+    while (( $# > 0 )); do
+	arg="$1"; shift
+	case "$arg" in
+	    --*=*)
+		key="${arg%%=*}"
+		parseopt "${key#--}" "${arg#--*=}"
+		;;
+	    --*)
+		shift=""
+		parseopt "${arg#--}" "$1"
+		if [[ -n "$shift" ]]; then shift; fi
+		;;
+	    *)
+		commands+=("$arg")
+	esac
+    done
+
+    cmd "${commands[@]}"
+}
+
+## Subcommands.
+
+cmd() {
+    if (( $# > 0 )); then
+	local cmd="$1"; shift
+	if [[ "$cmd" == "backup" ]]; then
+	    cmd_backup "$@"
+	else
+	    errx "Unknown subcommand: $cmd"
+	fi
+    else
+	errx "Missing arguments, try --help"
+    fi
+}
+
+cmd_backup() {
+    if (( $# > 0 )); then
+	local type="$1"; shift
+	if [[ "$type" == "azure" ]]; then
+	    cmd_backup_azure "$@"
+	elif [[ "$type" == "postgres" ]]; then
+	    cmd_backup_postgres "$@"
+	else
+	    errx "Unknown source: $type"
+	fi
+    else
+	errx "Missing arguments, try --help"
+    fi
+}
+
+cmd_backup_azure() {
+    if (( $# > 0 )); then
+	local type="$1"; shift
+	if [[ "$type" == "all" ]]; then
+	    cmd_backup_azure_all "$@"
+	elif [[ "$type" == "postgres" ]]; then
+	    cmd_backup_azure_postgres "$@"
+	else
+	    errx "Unknown Azure source: $type"
+	fi
+    else
+	errx "Missing arguments, try --help"
+    fi
+}
+
+cmd_backup_azure_all() {
+    if (( $# == 0 )); then
+	cmd_backup_azure_postgres
+    else
+	errx "Unknown arguments:" "$@"
+    fi
+}
+
+# List all databases in the resource group and find the corresponding
+# backup usernames and passwords via keyvault references.
+declare -a CONNS
+list_azure_postgres_conn() {
+    CONNS=()
+
+    mktmp AZHOSTLIST
+    "$scriptdir/../lib/azure-list-postgresql-hosts" >"$AZHOSTLIST"
+
+    local fqdn backupuser
+    while read fqdn backupuser; do
+	CONNS+=("host=$fqdn user=${backupuser}@${fqdn%%.*} sslmode=require")
+    done <"$AZHOSTLIST"
+}
+
+cmd_backup_azure_postgres() {
+    if (( $# > 0 )); then
+	errx "Unknown arguments:" "$@"
+    fi
+    list_azure_postgres_conn
+    local conn
+    for conn in "${CONNS[@]}"; do
+	cmd_backup_postgres_host "$conn"
+    done
+}
+
+cmd_backup_postgres() {
+    if (( $# > 0 )); then
+	local op="$1"; shift
+	if [[ "$op" == "host" ]]; then
+	    cmd_backup_postgres_host "$@"
+	elif [[ "$op" == "db" ]]; then
+	    cmd_backup_postgres_db "$@"
+	else
+	    errx "Unknown operation: $op"
+	fi
+    else
+	errx "Missing arguments, try --help"
+    fi
+}
+
+declare -a DBS
+list_postgres_dbs() {
+    local conn="$1"; shift
+
+    local host="${conn#* host=}"
+    host="${host#host=}"
+    host="${host%% *}"
+
+    conn="$conn dbname=postgres"
+    mktmp DBNAMES
+    psql "$conn" >"$DBNAMES" <<EOF || ERRS+=("Could not connect to PostgreSQL server $host, skipping.")
+\c postgres
+\pset format unaligned
+select 'DBNAME ' || datname from pg_database;
+EOF
+    DBS=()
+    local a b
+    while read a b; do
+	if [[ "$a" == "DBNAME" ]]; then
+	    DBS+=("$b")
+	fi
+    done <"$DBNAMES"
+}
+
+cmd_backup_postgres_host() {
+    if (( $# > 1 )); then
+	errx "Unknown arguments:" "$@"
+    fi
+    local conn="$1"; shift || errx "Missing arguments, try --help."
+    list_postgres_dbs "$conn"
+    local db
+    for db in "${DBS[@]}"; do
+	if [[ "$db" == "template0" ]]; then continue; fi
+	if [[ "$db" == "template1" ]]; then continue; fi
+	if [[ "$db" == "azure_maintenance" ]]; then continue; fi
+	cmd_backup_postgres_db "$conn dbname=$db"
+    done
+}
+
+cmd_backup_postgres_db() {
+    local conn="$1"; shift || errx "Missing arguments, try --help."
+    if (( $# > 0 )); then
+	errx "Unknown arguments:" "$@"
+    fi
+
+    # Parse the connection string.
+    local c="$conn" i k v
+    local -A conndata
+    while [[ -n "$c" ]]; do
+	# Find the first key=value item
+	i="${c%% *}"
+	c="${c#* }"
+	if [[ "$c" == "$i" ]]; then
+	    # It's the last item
+	    i="$c"; c=""
+	fi
+	# Split the key=value
+	k="${i%%=*}"
+	v="${i#*=}"
+	if [[ -z "${k//[a-z]}" ]]; then
+	    conndata[$k]="$v"
+	fi
+    done
+
+    local datetime=$(date '+%Y%m%d-%H%M%S-%Z')
+    local dumpname="postgres-${conndata[host]}-${conndata[dbname]}-$datetime"
+
+    backup_postgres "$dumpname.plain" "$conn" -Fplain
+    backup_postgres "$dumpname.custom" "$conn" -Fcustom
+}
+
+backup_postgres() {
+    local filename="$1"; shift
+    local conn="$1"; shift
+
+    mktmp_large PGDUMPDIR -d
+    pushd >/dev/null "$PGDUMPDIR"
+    if pg_dump "$@" --file="$filename" --encoding=UTF-8 --compress=0 "$conn"; then
+	borg_archive "$filename"
+    else
+	ERRS+=("Failed to create backup '$filename'.")
+    fi
+    zero "$filename"
+    popd >/dev/null
+}
+
+# Zero out temporary files to avoid them using up long term storage after deletion.
+zero() {
+    shred -z --iterations=0 "$1" >/dev/null 2>&1 || :
+}
+
+borg_archive() {
+    # Archive a single file using its own name as archive name.
+    if borg create --chunker-params=10,23,16,4095 "::$filename" "$filename"; then
+	return 0
+    fi
+    ERRS+=("Failed to store '$filename'.")
+}
+
+main "$@"
+
