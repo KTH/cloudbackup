@@ -28,7 +28,7 @@ borg init -e none
 For example:
 
 ```bash
- cloudbackup backup azure all
+cloudbackup backup azure all
 ```
 
 # Monitoring
