@@ -44,7 +44,7 @@ declare -a TMPFILES
 mktmp() {
     local tmpvar="$1"; shift
     local lctmpvar=$(tr '[[:upper:]]' '[[:lower:]]' <<<"$tmpvar")
-    local newtmpfile=$(mktemp "$@" "tmp.$scriptname.$lctmpvar.XXXXXX")
+    local newtmpfile=$(mktemp "$@" --suffix ".$scriptname.$lctmpvar")
     if [[ -z "$newtmpfile" ]]; then errx "Could not create temporary file."; fi
     TMPFILES+=("$newtmpfile")
     eval "$tmpvar='$newtmpfile'"
