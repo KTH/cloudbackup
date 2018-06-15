@@ -1,0 +1,12 @@
+#!/bin/bash
+
+set -e; set -o pipefail
+
+if "$@"; then
+    sleep 4
+    exit 0
+else
+    ec=$?
+    sleep 4
+    exit $ec
+fi
