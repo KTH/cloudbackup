@@ -37,13 +37,15 @@ import re
 import azure.common.credentials
 import azure.mgmt.rdbms.postgresql
 
+# Only accept shell-safe names.
+safe_re = re.compile("^[a-z0-9_\.-]+$")
+
 # Use the 'az login' credentials.
 creds = azure.common.credentials.get_azure_cli_credentials()
+
+# List PostgreSQL servers
 psqlmgmt = azure.mgmt.rdbms.postgresql.PostgreSQLManagementClient(*creds)
-
 psql_server_pages = psqlmgmt.servers.list()
-
-safe_re = re.compile("^[a-z0-9_\.-]+$")
 
 for psql_server in psql_server_pages:
     fqdn = psql_server.fully_qualified_domain_name
