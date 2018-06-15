@@ -42,11 +42,10 @@ creds = azure.common.credentials.get_azure_cli_credentials()
 psqlmgmt = azure.mgmt.rdbms.postgresql.PostgreSQLManagementClient(*creds)
 
 psql_server_pages = psqlmgmt.servers.list()
-psql_servers = [psql_server for psql_server in psql_server_pages]
 
 safe_re = re.compile("^[a-z0-9_\.-]+$")
 
-for psql_server in psql_servers:
+for psql_server in psql_server_pages:
     fqdn = psql_server.fully_qualified_domain_name
 
     if safe_re.match(fqdn) is None:
