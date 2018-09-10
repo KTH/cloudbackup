@@ -100,6 +100,9 @@ usage() {
     cat <<EOF
 Usage:
 
+  $0 backup all
+	Backup all databases listed in ~/.config/cloudbackup/all
+
   $0 backup postgres host <conn>
 	Backup all PostgreSQL databases on host <conn>.
 	<conn> must not contain dbname.
@@ -182,7 +185,9 @@ cmd() {
 cmd_backup() {
     if (( $# > 0 )); then
 	local type="$1"; shift
-	if [[ "$type" == "postgres" ]]; then
+	if [[ "$type" == "all" ]]; then
+	    cmd_backup_all "$@"
+	elif [[ "$type" == "postgres" ]]; then
 	    cmd_backup_postgres "$@"
 	else
 	    errx "Unknown source: $type"
@@ -190,6 +195,31 @@ cmd_backup() {
     else
 	errx "Missing arguments, try --help"
     fi
+}
+
+cmd_backup_all() {
+    if (( $# > 0 )); then
+	errx "Unknown arguments, try --help"
+    fi
+
+    # Verify config
+    if [[ ! -e ~/.config/cloudbackup/all ]]; then
+	errx "~/.config/cloudbackup/all does not exist"
+    fi
+
+    # Read config
+    local -a to_backup
+    local line
+    while read line; do
+	to_backup+=("$line")
+    done <~/.config/cloudbackup/all
+
+    # Run all backups
+    local -a elements
+    for line in "${to_backup[@]}"; do
+	read -a elements <<<"$line"
+	cmd_backup "${elements[@]}"
+    done
 }
 
 cmd_backup_postgres() {
