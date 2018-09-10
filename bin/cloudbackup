@@ -100,12 +100,6 @@ usage() {
     cat <<EOF
 Usage:
 
-  $0 backup azure all
-	Backup all services on Azure.
-
-  $0 backup azure postgres
-	Backup all PostgreSQL databases on Azure.
-
   $0 backup postgres host <conn>
 	Backup all PostgreSQL databases on host <conn>.
 	<conn> must not contain dbname.
@@ -188,9 +182,7 @@ cmd() {
 cmd_backup() {
     if (( $# > 0 )); then
 	local type="$1"; shift
-	if [[ "$type" == "azure" ]]; then
-	    cmd_backup_azure "$@"
-	elif [[ "$type" == "postgres" ]]; then
+	if [[ "$type" == "postgres" ]]; then
 	    cmd_backup_postgres "$@"
 	else
 	    errx "Unknown source: $type"
@@ -198,55 +190,6 @@ cmd_backup() {
     else
 	errx "Missing arguments, try --help"
     fi
-}
-
-cmd_backup_azure() {
-    if (( $# > 0 )); then
-	local type="$1"; shift
-	if [[ "$type" == "all" ]]; then
-	    cmd_backup_azure_all "$@"
-	elif [[ "$type" == "postgres" ]]; then
-	    cmd_backup_azure_postgres "$@"
-	else
-	    errx "Unknown Azure source: $type"
-	fi
-    else
-	errx "Missing arguments, try --help"
-    fi
-}
-
-cmd_backup_azure_all() {
-    if (( $# == 0 )); then
-	cmd_backup_azure_postgres
-    else
-	errx "Unknown arguments:" "$@"
-    fi
-}
-
-# List all databases in the resource group and find the corresponding
-# backup usernames and passwords via keyvault references.
-declare -a CONNS
-list_azure_postgres_conn() {
-    CONNS=()
-
-    mktmp AZHOSTLIST
-    "$scriptdir/../lib/azure-list-postgresql-hosts" >"$AZHOSTLIST"
-
-    local fqdn backupuser
-    while read fqdn backupuser; do
-	CONNS+=("host=$fqdn user=${backupuser}@${fqdn%%.*} sslmode=require")
-    done <"$AZHOSTLIST"
-}
-
-cmd_backup_azure_postgres() {
-    if (( $# > 0 )); then
-	errx "Unknown arguments:" "$@"
-    fi
-    list_azure_postgres_conn
-    local conn
-    for conn in "${CONNS[@]}"; do
-	cmd_backup_postgres_host "$conn"
-    done
 }
 
 cmd_backup_postgres() {

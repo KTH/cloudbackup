@@ -28,8 +28,12 @@ borg init -e none
 For example:
 
 ```bash
-cloudbackup backup azure all
+cloudbackup backup postgres host <conn>
 ```
+
+conn is according to https://www.postgresql.org/docs/10/static/libpq-connect.html#LIBPQ-CONNSTRING
+It should not contain a password, use ~/.pgpass instead.
+
 
 # Monitoring
 
