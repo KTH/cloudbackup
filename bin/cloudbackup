@@ -90,6 +90,13 @@ onexit() {
 	if (( exitcode < 2 )); then exitcode=2; fi
     done
 
+    if (( exitcode == 0 )); then
+	# If all is well, show some general status.
+	if [[ -n "$BORGINFO" && -s "$BORGINFO" ]]; then
+	    cat "$BORGINFO"
+	fi
+    fi
+
     exit $exitcode
 }
 trap onexit EXIT
@@ -165,6 +172,8 @@ main() {
     done
 
     cmd "${commands[@]}"
+
+    borg_status
 }
 
 ## Subcommands.
@@ -336,6 +345,15 @@ borg_archive() {
 	return 0
     fi
     ERRS+=("Failed to store '$filename'.")
+}
+
+borg_status() {
+    # Check the status of the borg repository.
+    if ! borg check; then
+	ERRS+=("Failure in borg repository check. Manual recovery required.")
+    fi
+    mktmp BORGINFO
+    borg info >"$BORGINFO" || :
 }
 
 main "$@"
