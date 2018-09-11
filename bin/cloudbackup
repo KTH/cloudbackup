@@ -222,14 +222,6 @@ cmd_backup_all() {
 	fi
 	lineno+=1
     done <~/.config/cloudbackup/all
-
-    # Read config
-    mktmp ALLCMDS
-    sed -nre <~/.config/cloudbackup/all >"$ALLCMDS" \
-	's,^\s*((postgres host "host=[a-z\.-]+ +user=[a-z\.@-]+ +sslmode=require(| +password=[A-Za-z0-9]+)")\s*$,cmd_backup \1,p; '
-
-    # Run all backups
-    . "$ALLCMDS"
 }
 
 cmd_backup_postgres() {
