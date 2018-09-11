@@ -207,19 +207,29 @@ cmd_backup_all() {
 	errx "~/.config/cloudbackup/all does not exist"
     fi
 
-    # Read config
-    local -a to_backup
+    mktmp CMDFILE
     local line
+    local -i lineno=1
     while read line; do
-	to_backup+=("$line")
+	# Read the line safely.
+	sed -nre <<<"$line" >"$CMDFILE" \
+	    's,^\s*((postgres host "host=[a-z\.-]+ +user=[a-z\.@-]+ +sslmode=require(| +password=[A-Za-z0-9]+)")\s*$,cmd_backup \1,p'
+	if [[ -s "$CMDFILE" ]]; then
+	    . "$CMDFILE"
+	else
+	    # The line didn't match a known safe pattern.
+	    ERRS+=("Error in ~/.config/cloudbackup/all on line $lineno.")
+	fi
+	lineno+=1
     done <~/.config/cloudbackup/all
 
+    # Read config
+    mktmp ALLCMDS
+    sed -nre <~/.config/cloudbackup/all >"$ALLCMDS" \
+	's,^\s*((postgres host "host=[a-z\.-]+ +user=[a-z\.@-]+ +sslmode=require(| +password=[A-Za-z0-9]+)")\s*$,cmd_backup \1,p; '
+
     # Run all backups
-    local -a elements
-    for line in "${to_backup[@]}"; do
-	read -a elements <<<"$line"
-	cmd_backup "${elements[@]}"
-    done
+    . "$ALLCMDS"
 }
 
 cmd_backup_postgres() {
