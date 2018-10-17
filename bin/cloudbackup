@@ -117,6 +117,9 @@ Usage:
   $0 backup postgres db <conn>
 	Backup specific PostgreSQL database <conn>.
 
+  $0 backup mongodb host <host> <port> <username>
+	Backup all MongoDB databases on the host.
+
   $0 --help
 	Show help.
 
@@ -198,6 +201,8 @@ cmd_backup() {
 	    cmd_backup_all "$@"
 	elif [[ "$type" == "postgres" ]]; then
 	    cmd_backup_postgres "$@"
+	elif [[ "$type" == "mongodb" ]]; then
+	    cmd_backup_mongodb "$@"
 	else
 	    errx "Unknown source: $type"
 	fi
@@ -222,7 +227,7 @@ cmd_backup_all() {
     while read line; do
 	# Read the line safely.
 	sed -nre <<<"$line" >"$CMDFILE" \
-	    's,^\s*(postgres host "host=[a-z\.-]+ +user=[a-z\.@-]+ +sslmode=require(| +password=[A-Za-z0-9]+)")\s*$,cmd_backup \1,p'
+	    's,^\s*(postgres host "host=[a-z\.-]+ +user=[a-z\.@-]+ +sslmode=require(| +password=[A-Za-z0-9]+)"|mongodb host [a-z0-9\.-]+ [0-9]+\s*$,cmd_backup \1,p'
 	if [[ -s "$CMDFILE" ]]; then
 	    . "$CMDFILE"
 	else
@@ -334,19 +339,85 @@ backup_postgres() {
     popd >/dev/null
 }
 
+cmd_backup_mongodb() {
+    if (( $# > 0 )); then
+	local op="$1"; shift
+	if [[ "$op" == "uri" ]]; then
+	    cmd_backup_mongodb_host "$@"
+	else
+	    errx "Unknown operation: $op"
+	fi
+    else
+	errx "Missing arguments, try --help"
+    fi
+}
+
+cmd_backup_mongodb_host() {
+    if (( $# > 2 )); then
+	errx "Unknown arguments:" "$@"
+    fi
+    local host="$1"; shift || errx "Missing arguments, try --help."
+    local port="$1"; shift || errx "Missing arguments, try --help."
+
+    local datetime=$(date '+%Y%m%d-%H%M%S-%Z')
+    local dumpname="mongodb-$host-$port-$datetime"
+
+    local ehost="${host//\./\\.}"
+
+    mktmp MONGODBPASS
+    sed -nre "s,^$ehost:$port ,,p;" <~/.config/cloudbackup/mongodbpass >"$MONGODBPASS"
+    if [[ ! -s "$MONGODBPASS" ]]; then
+	errx "Did not find $host:$port in ~/.config/cloudbackup/mongodbpass"
+    fi
+    read username password <"$MONGODBPASS"
+    zero "$MONGODBPASS"
+
+    backup_mongodb "$dumpname" "$host" "$port" "$username" "$password"
+}
+
+backup_mongodb() {
+    local dirname="$1"; shift
+    local host="$1"; shift
+    local port="$1"; shift
+    local username="$1"; shift
+    local password="$1"; shift
+
+    mktmp_large MONGODUMPDIR -d
+    pushd >/dev/null "$MONGODUMPDIR"
+
+    # Note: mongodump error handling is questionable: It will exit
+    #       with 0 exit status (OK) even if a non-existant database is
+    #       specified using --db.
+    # Also note: If there are no collections in the database, no files
+    #            will be created, which is correct, but the a backup
+    #            failure will be recorded.
+
+    if mongodump --quiet --ssl --host="$host" --port="$port" --username="$username" --password="$password" --out "$dirname"; then
+	if [[ -e "$dirname" ]]; then
+	    borg_archive "$dirname"
+	else
+	    ERRS+=("Failed to create backup '$dirname'.")
+	fi
+    else
+	ERRS+=("Failed to create backup '$dirname'.")
+    fi
+    zero "$dirname"/*
+    popd >/dev/null
+}
+
 # Zero out temporary files to avoid them using up long term storage after deletion.
 zero() {
     shred -z --iterations=0 "$1" >/dev/null 2>&1 || :
 }
 
 borg_archive() {
-    local filename="$1"; shift
+    local pathname="$1"; shift
 
-    # Archive a single file using its own name as archive name.
-    if borg create --chunker-params=10,23,16,4095 "::$filename" "$filename"; then
+    # Archive a single file or directory using its own name as archive name.
+    if borg create --chunker-params=10,23,16,4095 "::$pathname" "$pathname"; then
 	return 0
     fi
-    ERRS+=("Failed to store '$filename'.")
+    ERRS+=("Failed to store '$pathname'.")
 }
 
 borg_status() {
