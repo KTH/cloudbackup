@@ -342,7 +342,7 @@ backup_postgres() {
 cmd_backup_mongodb() {
     if (( $# > 0 )); then
 	local op="$1"; shift
-	if [[ "$op" == "uri" ]]; then
+	if [[ "$op" == "host" ]]; then
 	    cmd_backup_mongodb_host "$@"
 	else
 	    errx "Unknown operation: $op"
