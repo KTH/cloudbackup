@@ -340,6 +340,8 @@ zero() {
 }
 
 borg_archive() {
+    local filename="$1"; shift
+
     # Archive a single file using its own name as archive name.
     if borg create --chunker-params=10,23,16,4095 "::$filename" "$filename"; then
 	return 0
