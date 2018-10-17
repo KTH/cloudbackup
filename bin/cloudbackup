@@ -227,7 +227,7 @@ cmd_backup_all() {
     while read line; do
 	# Read the line safely.
 	sed -nre <<<"$line" >"$CMDFILE" \
-	    's,^\s*(postgres host "host=[a-z\.-]+ +user=[a-z\.@-]+ +sslmode=require(| +password=[A-Za-z0-9]+)"|mongodb host [a-z0-9\.-]+ [0-9]+\s*$,cmd_backup \1,p'
+	    's,^\s*(postgres host "host=[a-z\.-]+ +user=[a-z\.@-]+ +sslmode=require(| +password=[A-Za-z0-9]+)"|mongodb host [a-z0-9\.-]+ [0-9]+)\s*$,cmd_backup \1,p'
 	if [[ -s "$CMDFILE" ]]; then
 	    . "$CMDFILE"
 	else
