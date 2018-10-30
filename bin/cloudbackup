@@ -216,9 +216,15 @@ cmd_backup_all() {
 	errx "Unknown arguments, try --help"
     fi
 
+    backup_listed ~/.config/cloudbackup/all
+}
+
+backup_listed() {
+    local list_file="$1"; shift
+
     # Verify config
-    if [[ ! -e ~/.config/cloudbackup/all ]]; then
-	errx "~/.config/cloudbackup/all does not exist"
+    if [[ ! -e "$list_file" ]]; then
+	errx "$list_file does not exist"
     fi
 
     mktmp CMDFILE
@@ -232,10 +238,10 @@ cmd_backup_all() {
 	    . "$CMDFILE"
 	else
 	    # The line didn't match a known safe pattern.
-	    ERRS+=("Error in ~/.config/cloudbackup/all on line $lineno.")
+	    ERRS+=("Error in $list_file on line $lineno.")
 	fi
 	lineno+=1
-    done <~/.config/cloudbackup/all
+    done <"$list_file"
 }
 
 cmd_backup_postgres() {
