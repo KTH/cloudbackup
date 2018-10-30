@@ -1,0 +1,36 @@
+#!/usr/bin/python3
+
+import sys
+import pymongo
+
+hostport = sys.argv[1]
+username = sys.argv[2]
+password = sys.argv[3]
+database = sys.argv[4]
+collection = sys.argv[5]
+
+host = hostport.split(":")[0]
+clientkwargs = {}
+if ":" in hostport:
+    clientkwargs['port'] = int(hostport.split(":")[1])
+
+client = pymongo.MongoClient(host, username=username, password=password, ssl=True, **clientkwargs)
+
+import re
+clean_re = re.compile("^[A-Za-z0-9_\. @=-]+$")
+
+def is_clean(s):
+    return clean_re.match(s) is not None
+
+def to_line(**d):
+    if d['type'] == 'postgresql':
+        dhostconn = d['host'] if ('host' in d and is_clean(d['host'])) else 'error in {}'.format(d['id'])
+        return 'postgres host "{}"'.format(dhostconn)
+    elif d['type'] == 'mongodb':
+        dhost = d['host'] if ('host' in d and is_clean(d['host'])) else 'error in {}'.format(d['id'])
+        dport = d['port'] if ('port' in d and is_clean(str(d['port']))) else 'error in {}'.format(d['id'])
+        return "mongodb host {} {}".format(dhost, dport)
+
+for l in [to_line(**a) for a in client[database][collection].find()]:
+    print(l)
+

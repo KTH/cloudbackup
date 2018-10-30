@@ -110,6 +110,9 @@ Usage:
   $0 backup all
 	Backup all databases listed in ~/.config/cloudbackup/all
 
+  $0 backup listed in mongodb <host> <port> <username> <database> <collection>
+	Backup all databases listed in the collection.
+
   $0 backup postgres host <conn>
 	Backup all PostgreSQL databases on host <conn>.
 	<conn> must not contain dbname.
@@ -199,6 +202,8 @@ cmd_backup() {
 	local type="$1"; shift
 	if [[ "$type" == "all" ]]; then
 	    cmd_backup_all "$@"
+	elif [[ "$type" == "listed" ]]; then
+	    cmd_backup_listed "$@"
 	elif [[ "$type" == "postgres" ]]; then
 	    cmd_backup_postgres "$@"
 	elif [[ "$type" == "mongodb" ]]; then
@@ -219,6 +224,61 @@ cmd_backup_all() {
     backup_listed ~/.config/cloudbackup/all
 }
 
+cmd_backup_listed() {
+    if (( $# > 0 )); then
+	local op="$1"; shift
+	if [[ "$op" == "in" ]]; then
+	    cmd_backup_listed_in "$@"
+	else
+	    errx "Unknown paremeter: $op"
+	fi
+    else
+	errx "Missing arguments, try --help"
+    fi
+}
+
+cmd_backup_listed_in() {
+    if (( $# > 0 )); then
+	local source="$1"; shift
+	if [[ "$source" == "mongodb" ]]; then
+	    cmd_backup_listed_in_mongodb "$@"
+	else
+	    errx "Unknown paremeter: $source"
+	fi
+    else
+	errx "Missing arguments, try --help"
+    fi
+}
+
+cmd_backup_listed_in_mongodb() {
+    if (( $# > 0 )); then
+	if (( $# == 5 )); then
+	    local host="$1"; shift
+	    local port="$1"; shift
+	    local username="$1"; shift
+	    local database="$1"; shift
+	    local collection="$1"; shift
+
+	    mongodb_password "$host" "$port"
+	    local username="$USERNAME"
+	    local password="$PASSWORD"
+
+	    # Download list.
+	    mktmp LISTFILE; local listfile="$LISTFILE"
+	    if "$scriptdir"/../lib/mongodb_backup_list "$host:$port" "$username" "$password" "$database" "$collection" >"$listfile"; then
+		# Run list.
+		backup_listed "$listfile"
+	    else
+		ERRS+=("Error fetching list of databases at $host ($database.$collection).")
+	    fi
+	else
+	    errx "Too many arguments."
+	fi
+    else
+	errx "Missing arguments, try --help"
+    fi
+}
+
 backup_listed() {
     local list_file="$1"; shift
 
@@ -227,15 +287,15 @@ backup_listed() {
 	errx "$list_file does not exist"
     fi
 
-    mktmp CMDFILE
+    mktmp CMDFILE; local cmdfile="$CMDFILE" # allow recursion
     local line
     local -i lineno=1
     while read line; do
 	# Read the line safely.
-	sed -nre <<<"$line" >"$CMDFILE" \
+	sed -nre <<<"$line" >"$cmdfile" \
 	    's,^\s*(postgres host "host=[a-z\.-]+ +user=[a-z\.@-]+ +sslmode=require(| +password=[A-Za-z0-9]+)"|mongodb host [a-z0-9\.-]+ [0-9]+)\s*$,cmd_backup \1,p'
-	if [[ -s "$CMDFILE" ]]; then
-	    . "$CMDFILE"
+	if [[ -s "$cmdfile" ]]; then
+	    . "$cmdfile"
 	else
 	    # The line didn't match a known safe pattern.
 	    ERRS+=("Error in $list_file on line $lineno.")
@@ -368,6 +428,17 @@ cmd_backup_mongodb_host() {
     local datetime=$(date '+%Y%m%d-%H%M%S-%Z')
     local dumpname="mongodb-$host-$port-$datetime"
 
+    mongodb_password "$host" "$port"
+    local username="$USERNAME"
+    local password="$PASSWORD"
+
+    backup_mongodb "$dumpname" "$host" "$port" "$username" "$password"
+}
+
+mongodb_password() {
+    local host="$1"; shift
+    local port="$1"; shift
+
     local ehost="${host//\./\\.}"
 
     mktmp MONGODBPASS
@@ -375,10 +446,11 @@ cmd_backup_mongodb_host() {
     if [[ ! -s "$MONGODBPASS" ]]; then
 	errx "Did not find $host:$port in ~/.config/cloudbackup/mongodbpass"
     fi
+    local username password
     read username password <"$MONGODBPASS"
     zero "$MONGODBPASS"
-
-    backup_mongodb "$dumpname" "$host" "$port" "$username" "$password"
+    USERNAME="$username"
+    PASSWORD="$password"
 }
 
 backup_mongodb() {
