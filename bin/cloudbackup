@@ -402,6 +402,7 @@ backup_postgres() {
 	ERRS+=("Failed to create backup '$filename'.")
     fi
     zero "$filename"
+    rm -f "$filename"
     popd >/dev/null
 }
 
@@ -480,6 +481,7 @@ backup_mongodb() {
 	ERRS+=("Failed to create backup '$dirname'.")
     fi
     zero "$dirname"/*/*
+    rm -f "$dirname"/*/*
     popd >/dev/null
 }
 
