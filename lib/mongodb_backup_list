@@ -30,8 +30,8 @@ def to_line(**d):
         dhost = d['host'] if ('host' in d and is_clean(d['host'])) else 'error in {}'.format(d['id'])
         dport = d['port'] if ('port' in d and is_clean(str(d['port']))) else 'error in {}'.format(d['id'])
         if ('username' in d) and ('password' in d):
-            dusername = d['username'] if is_clean(str(d['username']))
-            dpassword = d['password'] if is_clean(str(d['password']))
+            dusername = d['username'] if is_clean(str(d['username'])) else 'error in {}'.format(d['id'])
+            dpassword = d['password'] if is_clean(str(d['password'])) else 'error in {}'.format(d['id'])
             return "mongodb given host {} {} {} {}".format(dhost, dport, dusername, dpassword)
         return "mongodb known host {} {}".format(dhost, dport)
 
