@@ -120,8 +120,13 @@ Usage:
   $0 backup postgres db <conn>
 	Backup specific PostgreSQL database <conn>.
 
-  $0 backup mongodb host <host> <port> <username>
+  $0 backup mongodb known host <host> <port>
 	Backup all MongoDB databases on the host.
+	Password from ~/.config/cloudbackup/mongodbpass
+
+  $0 backup mongodb given host <host> <port> <username> <password>
+	Backup all MongoDB databases on the host using
+	given credentials.
 
   $0 --help
 	Show help.
@@ -293,7 +298,7 @@ backup_listed() {
     while read line; do
 	# Read the line safely.
 	sed -nre <<<"$line" >"$cmdfile" \
-	    's,^\s*(postgres host "host=[a-z\.-]+ +user=[a-z\.@-]+ +sslmode=require(| +password=[A-Za-z0-9]+)"|mongodb host [a-z0-9\.-]+ [0-9]+|listed in mongodb [a-z0-9\.-]+ [0-9]+ [a-z0-9\.-]+ [a-z0-9-]+ [a-z0-9-]+)\s*$,cmd_backup \1,p'
+	    's,^\s*(postgres host "host=[a-z\.-]+ +user=[a-z\.@-]+ +sslmode=require(| +password=[A-Za-z0-9]+)"|mongodb host [a-z0-9\.-]+ [0-9]+(| [A-Za-z0-9-]+ [A-Za-z0-9_\.@=-]+)|listed in mongodb [a-z0-9\.-]+ [0-9]+ [a-z0-9\.-]+ [a-z0-9-]+ [a-z0-9-]+)\s*$,cmd_backup \1,p'
 	if [[ -s "$cmdfile" ]]; then
 	    . "$cmdfile"
 	else
@@ -409,8 +414,10 @@ backup_postgres() {
 cmd_backup_mongodb() {
     if (( $# > 0 )); then
 	local op="$1"; shift
-	if [[ "$op" == "host" ]]; then
-	    cmd_backup_mongodb_host "$@"
+	if [[ "$op" == "known" ]]; then
+	    cmd_backup_mongodb_known "$@"
+	elif [[ "$op" == "given" ]]; then
+	    cmd_backup_mongodb_given "$@"
 	else
 	    errx "Unknown operation: $op"
 	fi
@@ -419,7 +426,33 @@ cmd_backup_mongodb() {
     fi
 }
 
-cmd_backup_mongodb_host() {
+cmd_backup_mongodb_known() {
+    if (( $# > 0 )); then
+	local op="$1"; shift
+	if [[ "$op" == "host" ]]; then
+	    cmd_backup_mongodb_known_host "$@"
+	else
+	    errx "Unknown operation: $op"
+	fi
+    else
+	errx "Missing arguments, try --help"
+    fi
+}
+
+cmd_backup_mongodb_given() {
+    if (( $# > 0 )); then
+	local op="$1"; shift
+	if [[ "$op" == "host" ]]; then
+	    cmd_backup_mongodb_given_host "$@"
+	else
+	    errx "Unknown operation: $op"
+	fi
+    else
+	errx "Missing arguments, try --help"
+    fi
+}
+
+cmd_backup_mongodb_known_host() {
     if (( $# > 2 )); then
 	errx "Unknown arguments:" "$@"
     fi
@@ -432,6 +465,21 @@ cmd_backup_mongodb_host() {
     mongodb_password "$host" "$port"
     local username="$USERNAME"
     local password="$PASSWORD"
+
+    backup_mongodb "$dumpname" "$host" "$port" "$username" "$password"
+}
+
+cmd_backup_mongodb_given_host() {
+    if (( $# > 4 )); then
+	errx "Unknown arguments:" "$@"
+    fi
+    local host="$1"; shift || errx "Missing arguments, try --help."
+    local port="$1"; shift || errx "Missing arguments, try --help."
+    local username="$1"; shift || errx "Missing arguments, try --help."
+    local password="$1"; shift || errx "Missing arguments, try --help."
+
+    local datetime=$(date '+%Y%m%d-%H%M%S-%Z')
+    local dumpname="mongodb-$host-$port-$datetime"
 
     backup_mongodb "$dumpname" "$host" "$port" "$username" "$password"
 }
