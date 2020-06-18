@@ -405,6 +405,7 @@ backup_postgres() {
 	borg_archive "$filename"
     else
 	ERRS+=("Failed to create backup '$filename'.")
+	df -hP . >&2
     fi
     zero "$filename"
     rm -f "$filename"
@@ -524,9 +525,11 @@ backup_mongodb() {
 	    borg_archive "$dirname"
 	else
 	    ERRS+=("Failed to create backup '$dirname'.")
+	    df -hP . >&2
 	fi
     else
 	ERRS+=("Failed to create backup '$dirname'.")
+	df -hP . >&2
     fi
     zero "$dirname"/*/*
     rm -f "$dirname"/*/*
