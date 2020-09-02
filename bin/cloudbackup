@@ -522,18 +522,23 @@ backup_mongodb() {
 
     mktmp MONGOOUT
     mktmp MONGOERR
+    local lasterr
     if mongodump --ssl --host="$host" --port="$port" --username="$username" --password="$password" --out "$dirname" >"$MONGOOUT" 2>"$MONGOERR"; then
 	if [[ -e "$dirname" ]]; then
 	    borg_archive "$dirname"
 	else
-	    ERRS+=("Backup '$dirname' was empty.")
+	    lasterr=$(tail -1 "$MONGOERR")
+	    if [[ -n "$lasterr" ]]; then lasterr=" ($lasterr)"; fi
+	    ERRS+=("Backup '$dirname' was empty.$lasterr")
 	    echo >&2 "Failed: mongodump of $username on $host:$port"
 	    df -hP . >&2
 	    cat "$MONGOOUT"
 	    cat >&2 "$MONGOERR"
 	fi
     else
-	ERRS+=("Failed to create backup '$dirname'.")
+	lasterr=$(tail -1 "$MONGOERR")
+	if [[ -n "$lasterr" ]]; then lasterr=" ($lasterr)"; fi
+	ERRS+=("Failed to create backup '$dirname'.$lasterr")
 	echo >&2 "Failed: mongodump of $username on $host:$port"
 	df -hP . >&2
 	cat "$MONGOOUT"
