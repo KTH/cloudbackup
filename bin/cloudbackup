@@ -74,7 +74,6 @@ declare -a ERRS ERRLOGS
 onexit() {
     local ec="$?" l="${BASH_LINENO}"
     trap - EXIT
-    cleanup
     local -i exitcode=$ec lineno=$l
 
     if (( exitcode != 0 )); then
@@ -101,6 +100,8 @@ onexit() {
 	    cat "$BORGINFO"
 	fi
     fi
+
+    cleanup
 
     exit $exitcode
 }
