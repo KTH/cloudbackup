@@ -393,14 +393,16 @@ cmd_backup_postgres_db() {
 	fi
     done
 
+    local readablename="postgres ${conndata[host]} ${conndata[dbname]}"
     local datetime=$(date '+%Y%m%d-%H%M%S-%Z')
     local dumpname="postgres-${conndata[host]}-${conndata[dbname]}-$datetime"
 
-    backup_postgres "$dumpname.plain" "$conn" -Fplain
-    backup_postgres "$dumpname.custom" "$conn" -Fcustom
+    backup_postgres "$readablename" "$dumpname.plain" "$conn" -Fplain
+    backup_postgres "$readablename" "$dumpname.custom" "$conn" -Fcustom
 }
 
 backup_postgres() {
+    local readablename="$1"; shift
     local filename="$1"; shift
     local conn="$1"; shift
 
@@ -414,7 +416,7 @@ backup_postgres() {
     else
 	lasterr=$(tail -1 "$CMDERR")
 	if [[ -n "$lasterr" ]]; then lasterr=" ($lasterr)"; fi
-	ERRS+=("Failed to create backup '$filename'.$lasterr")
+	ERRS+=("Failed to create backup of $readablename.$lasterr")
 	df -hP . >>"$CMDOUT"
 	ERRLOGS+=("$CMDOUT" "$CMDERR")
     fi
@@ -478,7 +480,9 @@ cmd_backup_mongodb_known_host() {
     local username="$USERNAME"
     local password="$PASSWORD"
 
-    backup_mongodb "$dumpname" "$host" "$port" "$username" "$password"
+    local readablename="mongodb $host:$port"
+
+    backup_mongodb "$readablename" "$dumpname" "$host" "$port" "$username" "$password"
 }
 
 cmd_backup_mongodb_given_host() {
@@ -493,7 +497,9 @@ cmd_backup_mongodb_given_host() {
     local datetime=$(date '+%Y%m%d-%H%M%S-%Z')
     local dumpname="mongodb-$host-$port-$datetime"
 
-    backup_mongodb "$dumpname" "$host" "$port" "$username" "$password"
+    local readablename="mongodb $host:$port"
+
+    backup_mongodb "$readablename" "$dumpname" "$host" "$port" "$username" "$password"
 }
 
 mongodb_password() {
@@ -515,6 +521,7 @@ mongodb_password() {
 }
 
 backup_mongodb() {
+    local readablename="$1"; shift
     local dirname="$1"; shift
     local host="$1"; shift
     local port="$1"; shift
@@ -540,14 +547,14 @@ backup_mongodb() {
 	else
 	    lasterr=$(tail -1 "$CMDERR")
 	    if [[ -n "$lasterr" ]]; then lasterr=" ($lasterr)"; fi
-	    ERRS+=("Backup '$dirname' was empty.$lasterr")
+	    ERRS+=("Backup of $readablename was empty.$lasterr")
 	    df -hP . >>"$CMDOUT"
 	    ERRLOGS+=("$CMDOUT" "$CMDERR")
 	fi
     else
 	lasterr=$(tail -1 "$CMDERR")
 	if [[ -n "$lasterr" ]]; then lasterr=" ($lasterr)"; fi
-	ERRS+=("Failed to create backup '$dirname'.$lasterr")
+	ERRS+=("Failed to create backup of $readablename.$lasterr")
 	df -hP . >>"$CMDOUT"
 	ERRLOGS+=("$CMDOUT" "$CMDERR")
     fi
