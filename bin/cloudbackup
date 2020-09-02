@@ -520,16 +520,24 @@ backup_mongodb() {
     #            will be created, which is correct, but the a backup
     #            failure will be recorded.
 
-    if mongodump --quiet --ssl --host="$host" --port="$port" --username="$username" --password="$password" --out "$dirname"; then
+    mktmp MONGOOUT
+    mktmp MONGOERR
+    if mongodump --ssl --host="$host" --port="$port" --username="$username" --password="$password" --out "$dirname" >"$MONGOOUT" 2>"$MONGOERR"; then
 	if [[ -e "$dirname" ]]; then
 	    borg_archive "$dirname"
 	else
 	    ERRS+=("Failed to create backup '$dirname'.")
+	    echo >&2 "Failed: mongodump of $username on $host:$port"
 	    df -hP . >&2
+	    cat "$MONGOOUT"
+	    cat >&2 "$MONGOERR"
 	fi
     else
 	ERRS+=("Failed to create backup '$dirname'.")
+	echo >&2 "Failed: mongodump of $username on $host:$port"
 	df -hP . >&2
+	cat "$MONGOOUT"
+	cat >&2 "$MONGOERR"
     fi
     zero "$dirname"/*/*
     rm -f "$dirname"/*/*
