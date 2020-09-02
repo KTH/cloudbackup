@@ -526,7 +526,7 @@ backup_mongodb() {
 	if [[ -e "$dirname" ]]; then
 	    borg_archive "$dirname"
 	else
-	    ERRS+=("Failed to create backup '$dirname'.")
+	    ERRS+=("Backup '$dirname' was empty.")
 	    echo >&2 "Failed: mongodump of $username on $host:$port"
 	    df -hP . >&2
 	    cat "$MONGOOUT"
