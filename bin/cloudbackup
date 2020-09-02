@@ -95,6 +95,14 @@ onexit() {
 	if [[ -n "$BORGINFO" && -s "$BORGINFO" ]]; then
 	    cat "$BORGINFO"
 	fi
+    else
+	# Show further errors.
+	if [[ -n "$CMDOUT" && -s "$CMDOUT" ]]; then
+	    cat "$CMDOUT"; CMDOUT=""
+	fi
+	if [[ -n "$CMDERR" && -s "$CMDERR" ]]; then
+	    cat "$CMDERR" >&2; CMDERR=""
+	fi
     fi
 
     exit $exitcode
@@ -401,10 +409,16 @@ backup_postgres() {
 
     mktmp_large PGDUMPDIR -d
     pushd >/dev/null "$PGDUMPDIR"
-    if pg_dump "$@" --file="$filename" --encoding=UTF-8 --compress=0 "$conn"; then
+    mktmp CMDOUT
+    mktmp CMDERR
+    local lasterr
+    if pg_dump "$@" --file="$filename" --encoding=UTF-8 --compress=0 "$conn" >"$CMDOUT" 2>"$CMDERR"; then
+	CMDOUT=""; CMDERR=""
 	borg_archive "$filename"
     else
-	ERRS+=("Failed to create backup '$filename'.")
+	lasterr=$(tail -1 "$CMDERR")
+	if [[ -n "$lasterr" ]]; then lasterr=" ($lasterr)"; fi
+	ERRS+=("Failed to create backup '$filename'.$lasterr")
 	df -hP . >&2
     fi
     zero "$filename"
@@ -520,29 +534,24 @@ backup_mongodb() {
     #            will be created, which is correct, but the a backup
     #            failure will be recorded.
 
-    mktmp MONGOOUT
-    mktmp MONGOERR
+    mktmp CMDOUT
+    mktmp CMDERR
     local lasterr
-    if mongodump --ssl --host="$host" --port="$port" --username="$username" --password="$password" --out "$dirname" >"$MONGOOUT" 2>"$MONGOERR"; then
+    if mongodump --ssl --host="$host" --port="$port" --username="$username" --password="$password" --out "$dirname" >"$CMDOUT" 2>"$CMDERR"; then
 	if [[ -e "$dirname" ]]; then
 	    borg_archive "$dirname"
+	    CMDOUT=""; CMDERR=""
 	else
-	    lasterr=$(tail -1 "$MONGOERR")
+	    lasterr=$(tail -1 "$CMDERR")
 	    if [[ -n "$lasterr" ]]; then lasterr=" ($lasterr)"; fi
 	    ERRS+=("Backup '$dirname' was empty.$lasterr")
-	    echo >&2 "Failed: mongodump of $username on $host:$port"
-	    df -hP . >&2
-	    cat "$MONGOOUT"
-	    cat >&2 "$MONGOERR"
+	    df -hP . >>"$CMDOUT"
 	fi
     else
-	lasterr=$(tail -1 "$MONGOERR")
+	lasterr=$(tail -1 "$CMDERR")
 	if [[ -n "$lasterr" ]]; then lasterr=" ($lasterr)"; fi
 	ERRS+=("Failed to create backup '$dirname'.$lasterr")
-	echo >&2 "Failed: mongodump of $username on $host:$port"
-	df -hP . >&2
-	cat "$MONGOOUT"
-	cat >&2 "$MONGOERR"
+	df -hP . >>"$CMDOUT"
     fi
     zero "$dirname"/*/*
     rm -f "$dirname"/*/*
