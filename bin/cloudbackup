@@ -543,7 +543,7 @@ backup_mongodb() {
     mktmp CMDOUT
     mktmp CMDERR
     local lasterr
-    if mongodump --ssl --host="$host" --port="$port" --username="$username" --password="$password" --out "$dirname" >"$CMDOUT" 2>"$CMDERR"; then
+    if mongodump -j 1 --ssl --host="$host" --port="$port" --username="$username" --password="$password" --out "$dirname" >"$CMDOUT" 2>"$CMDERR"; then
 	if [[ -e "$dirname" ]]; then
 	    borg_archive "$dirname"
 	else
