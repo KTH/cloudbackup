@@ -365,6 +365,7 @@ cmd_backup_postgres_host() {
 	if [[ "$db" == "template0" ]]; then continue; fi
 	if [[ "$db" == "template1" ]]; then continue; fi
 	if [[ "$db" == "azure_maintenance" ]]; then continue; fi
+	if [[ "$db" == "azure_sys" ]]; then continue; fi
 	cmd_backup_postgres_db "$conn dbname=$db"
     done
 }
